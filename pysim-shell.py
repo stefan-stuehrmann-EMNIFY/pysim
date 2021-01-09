@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
 
+# Interactive shell for working with SIM / UICC / USIM / ISIM cards
+#
+# (C) 2021 by Harald Welte <laforge@osmocom.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+from typing import List
+
 import cmd2
 from cmd2 import style, fg, bg
 from cmd2 import CommandSet, with_default_category, with_argparser
@@ -19,34 +38,26 @@ from pySim.utils import h2b, swap_nibbles, rpad, h2s
 from pySim.utils import dec_st, init_reader, sanitize_pin_adm
 from pySim.card_handler import card_handler
 
+from pySim.filesystem import MF, RuntimeState
+from pySim.fs_sim import ADF_USIM, DF_GSM, DF_TELECOM
+
 class PysimApp(cmd2.Cmd):
 	CUSTOM_CATEGORY = 'pySim Commands'
-	def __init__(self, card):
-		#super().__init__(persistent_history_file='~/.pysim_shell_history', allow_cli_args=False)
+	def __init__(self, card, rs):
+		basic_commands = [Iso7816Commands(), UsimCommands()]
 		super().__init__(persistent_history_file='~/.pysim_shell_history', allow_cli_args=False,
-				use_ipython=True)
+				use_ipython=True, auto_load_commands=False, command_sets=basic_commands)
 		self.intro = style('Welcome to pySim-shell!', fg=fg.red)
 		self.default_category = 'pySim-shell built-in commands'
 		self.card = card
-		self.path = ['3f00']
+		self.rs = rs
 		self.update_prompt()
-		self.py_locals = { 'card': self.card, 'path' : self.path }
+		self.py_locals = { 'card': self.card, 'rs' : self.rs }
 		self.card.read_aids()
 		self.poutput('AIDs on card: %s' % (self.card._aids))
 
 	def update_prompt(self):
-		self.prompt = 'pySIM-shell (%s)> ' % ('/'.join(self.path))
-
-	def update_path(self, path):
-		for p in path:
-			if p == '3f00':
-				self.path = []
-			self.path.append(p)
-		self.update_prompt()
-
-	def set_path(self, path):
-		self.path = path
-		self.update_prompt()
+		self.prompt = 'pySIM-shell (%s)> ' % ('/'.join(self.rs.selected_file.fully_qualified_path()))
 
 	@cmd2.with_category(CUSTOM_CATEGORY)
 	def do_intro(self, _):
@@ -60,77 +71,21 @@ class PysimApp(cmd2.Cmd):
 		self.card.verify_adm(h2b(pin_adm))
 
 
-
 @with_default_category('ISO7816 Commands')
 class Iso7816Commands(CommandSet):
 	def __init__(self):
 		super().__init__()
 
-	def do_select_file(self, opts):
-		"""SELECT a DF (Dedicated File) or EF (Entry File)"""
-		path = opts.arg_list
-		rv = self._cmd.card._scc.select_file(path)
-		self._cmd.poutput(rv)
-		# TODO: check if it was a DF or EF and update path accordingly
-		self._cmd.update_path(path)
+	def do_select(self, opts):
+		"""SELECT a File (ADF/DF/EF)"""
+		path = opts.arg_list[0]
+		self._cmd.rs.select(path, self._cmd)
+		self._cmd.update_prompt()
 
-	def do_select_adf(self, opts):
-		"""SELECT an ADF (Application Dedicated File)"""
-		aid = opts.arg_list[0]
-		rv = self._cmd.card._scc.select_adf(aid)
-		self._cmd.poutput(rv)
-		self._cmd.set_path([aid])
-
-	read_bin_parser = argparse.ArgumentParser()
-	rbpg = read_bin_parser.add_mutually_exclusive_group()
-	rbpg.add_argument('--file-id', help='File ID')
-	#rbpg.add_argument('--sfid', help='Short File ID')
-	read_bin_parser.add_argument('--offset', type=int, default=0, help='Byte offset for start of read')
-	read_bin_parser.add_argument('--length', type=int, help='Number of bytes to read')
-
-	@cmd2.with_argparser(read_bin_parser)
-	def do_read_binary(self, opts):
-		"""Read binary data from a transparent EF"""
-		(data, sw) = self._cmd.card._scc.read_binary(opts.file_id, opts.length, opts.offset)
-		self._cmd.poutput(data)
-
-	upd_bin_parser = argparse.ArgumentParser()
-	ubpg = upd_bin_parser.add_mutually_exclusive_group()
-	ubpg.add_argument('--file-id', help='File ID')
-	#ubpg.add_argument('--sfid', help='Short File ID')
-	upd_bin_parser.add_argument('--offset', type=int, default=0, help='Byte offset for start of read')
-	upd_bin_parser.add_argument('data', help='Data bytes (hex format) to write')
-
-	@cmd2.with_argparser(upd_bin_parser)
-	def do_update_binary(self, opts):
-		"""Update (Write) data of a transparent EF"""
-		(data, sw) = self._cmd.card._scc.update_binary(opts.file_id, opts.data, opts.offset)
-		self._cmd.poutput(data)
-
-	read_rec_parser = argparse.ArgumentParser()
-	rrpg = read_rec_parser.add_mutually_exclusive_group()
-	rrpg.add_argument('--file-id', help='File ID')
-	#rrpg.add_argument('--sfid', help='Short File ID')
-	read_bin_parser.add_argument('--record-nr', type=int, default=0, help='Number of record to read')
-
-	@cmd2.with_argparser(read_rec_parser)
-	def du_read_record(self, opts):
-		"""Read a record from a record-oriented EF"""
-		(data, sw) = self._cmd.card._scc.read_record(opts.file_id, opts.record_nr)
-		self._cmd.poutput(data)
-
-	upd_rec_parser = argparse.ArgumentParser()
-	urpg = upd_rec_parser.add_mutually_exclusive_group()
-	urpg.add_argument('--file-id', help='File ID')
-	#urpg.add_argument('--sfid', help='Short File ID')
-	upd_rec_parser.add_argument('--record-nr', type=int, default=0, help='Number of record to read')
-	upd_rec_parser.add_argument('data', help='Data bytes (hex format) to write')
-
-	@cmd2.with_argparser(upd_rec_parser)
-	def do_update_record(self, opts):
-		"""Update (write) data to a record-oriented EF"""
-		(data, sw) = self._cmd.card._scc.update_record(opts.file_id, opts.record_nr, opts.data)
-		self._cmd.poutput(data)
+	def complete_select(self, text, line, begidx, endidx) -> List[str]:
+		"""Command Line tab completion for SELECT"""
+		index_dict = { 1: self._cmd.rs.selected_file.get_selectable_names() }
+		return self._cmd.index_based_complete(text, line, begidx, endidx, index_dict=index_dict)
 
 	verify_chv_parser = argparse.ArgumentParser()
 	verify_chv_parser.add_argument('--chv-nr', type=int, default=1, help='CHV Number')
@@ -149,16 +104,6 @@ class Iso7816Commands(CommandSet):
 class UsimCommands(CommandSet):
 	def __init__(self):
 		super().__init__()
-
-	def do_ust_service_activate(self, arg):
-		"""Activate a service within EF.UST"""
-		self._cmd.card.select_adf_by_aid(adf="usim")
-		self._cmd.card.update_ust(int(arg), 1);
-
-	def do_ust_service_deactivate(self, arg):
-		"""Deactivate a service within EF.UST"""
-		self._cmd.card.select_adf_by_aid(adf="usim")
-		self._cmd.card.update_ust(int(arg), 0);
 
 	def do_read_ust(self, _):
 		"""Read + Display the EF.UST"""
@@ -238,5 +183,13 @@ if __name__ == '__main__':
 		print("No card detected!")
 		sys.exit(2)
 
-	app = PysimApp(card)
+	mf = MF()
+	#mf.add_file(DF_TELECOM())
+	mf.add_file(DF_GSM())
+	mf.add_file(DF_TELECOM())
+	mf.add_file(ADF_USIM())
+
+	rs = RuntimeState(mf, card)
+
+	app = PysimApp(card, rs)
 	app.cmdloop()
