@@ -42,6 +42,7 @@ DF_num = {
 'SOLSA': '5F70',
 
 'MExE': '5F3C',
+'Idemia': '7FDE'
 }
 
 EF_num = {
@@ -138,6 +139,9 @@ EF_num = {
 'MMSICP': '6FD0',
 'MMSUP': '6FD1',
 'MMSUCP': '6FD2',
+
+# Idemia Multi Imsi
+'mIMSI_IMSI_TABLE': '8102'
 }
 
 DF = {
@@ -159,6 +163,7 @@ DF = {
 'SoLSA':    [MF_num, DF_num['SOLSA']],
 
 'MExE':     [MF_num, DF_num['MExE']],
+'Idemia': 	[MF_num, DF_num['Idemia']],
 }
 
 
@@ -250,6 +255,8 @@ EF = {
 'MMSICP': DF['GSM']+[EF_num['MMSICP']],
 'MMSUP':  DF['GSM']+[EF_num['MMSUP']],
 'MMSUCP': DF['GSM']+[EF_num['MMSUCP']],
+
+'mIMSI_IMSI_TABLE': DF['Idemia']+[EF_num['mIMSI_IMSI_TABLE']],
 }
 
 # Mapping between SIM Service Number and its description
