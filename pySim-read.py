@@ -124,7 +124,7 @@ if __name__ == '__main__':
 		print("IMSI: Can't read, response code = %s" % (sw,))
 
 	# Idemia Multi Imsi - Imsi List
-	(res, sw) = card.read_record('3F007FDE8102', 1)
+	(res, sw) = card.read_record(['3F00', '7FDE', '8102'], 1)
 	if sw == '9000':
 		print("IMSI_LIST: %s" % (res,))
 	else:
