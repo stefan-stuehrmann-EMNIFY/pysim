@@ -31,7 +31,6 @@ import sys
 from pySim.ts_51_011 import EF, DF, EF_SST_map, EF_AD_mode_map
 from pySim.ts_31_102 import EF_UST_map, EF_USIM_ADF_map
 from pySim.ts_31_103 import EF_IST_map, EF_ISIM_ADF_map
-from pySim.idemia_multi_imsi import EF
 
 from pySim.commands import SimCardCommands
 from pySim.cards import card_detect, Card
@@ -125,7 +124,7 @@ if __name__ == '__main__':
 		print("IMSI: Can't read, response code = %s" % (sw,))
 
 	# Idemia Multi Imsi - Imsi List
-	(res, sw) = card.read_binary(['3F00', '7FDE', '8102'])
+	(res, sw) = card.read_record('3F007FDE8102', 1)
 	if sw == '9000':
 		print("IMSI_LIST: %s" % (res,))
 	else:
